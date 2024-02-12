@@ -39,7 +39,13 @@ class DenoiseDiffusion:
         return mean + math.sqrt(var) * epsilon
     
     def sample_from_p_theta_distribution(self, xt: torch.Tensor, t: torch.Tensor):
-        pass
+        epsilon_theta = self.eps_model(xt, t)
+        alpha_bar = gather(self.alpha_bars, t)
+        alpha = gather(self.alphas, t)
+        beta = gather(self.betas, t)
+        mean = (xt - beta * epsilon_theta / torch.sqrt(1 - alpha_bar)) / torch.sqrt(alpha)
+        var = gather(self.sigma_squares, t)
+        return mean, var
     
     def simple_loss(self, x0: torch.Tensor, epsilon: Optional[torch.Tensor]=None):
         # get batch size

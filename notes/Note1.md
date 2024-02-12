@@ -167,7 +167,16 @@ def sample_from_q_xt_x0_distribution(self, x0: torch.Tensor, t: torch.Tensor,
     - To get the distribution $q(x_t|x_0)$, we can call the function `get_q_xt_x0_distribution` we've just defined.  
     - Sample from $q(x_t|x_0)$ means, apply the noise we've sampled, to get a point of distribution $q(x_t|x_0)$. The scale of $\epsilon$ is determined by the standard deviation(square root of variance, $\sqrt{var}$), and after scaling, it should be shifted by $mean$.  
 ### 2.4 The `sample_from_p_theta_distribution` Function  
-
+This function samples from the distribution $p_\theta(x_{t - 1}|x_{t}) = \mathscr{N}(x_{t - 1}; \mu_{\theta}(x_t, t), \sigma_t^2I)$.  
+$1$  
+According to the sampling algorithm $2$, $\mathbf{x}_{t - 1} = \frac{1}{\sqrt{\alpha_t}}(\mathbf{x}_t - \frac{\beta_t}{\sqrt{1 - \bar{\alpha}_t}}\epsilon_{\theta}(\mathbf{x}_t, t)) + \sigma_t \mathbf{z}$, where $\mathbf{z} ∼ \mathscr{N}(0, 1)$.  
+Thus, the mean value of distribution $p_\theta(x_{t - 1} | x_t)$ is:   
+$\mu_\theta(x_t, t) = \frac{1}{\sqrt{\alpha_t}}(\mathbf{x}_t - \frac{\beta_t}{\sqrt{1 - \bar{\alpha}_t}}\epsilon_{\theta}(\mathbf{x}_t, t))$.  
+And the variance of distribution $p_\theta(x_{t - 1} | x_t)$ is:   
+$\sigma_t^2$.  
+The $\sigma_t^2$ has been initialized in our initialize function `__init__`, and $\sigma_t^2 = \beta_t = 1 - \alpha_t$. The larger the timestep $t$, the smaller $\sigma_t^2$ is.  
+To get a sample in distribution $p_\theta(x_{t - 1}|x_{t})$, we get the mean and variance of the distribution first, and then apply $mean + \epsilon \cdot \sqrt{var}$ to get the sample like `sample_from_q_xt_x0`.  
+  
 ## 3 Loss Function
 $L_{simple}(\theta) = \mathbb{E}_{t, \mathbf{x}_0, \epsilon}[||\epsilon - \epsilon_\theta(\sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\epsilon, t)||^2]$  
 ``` python
