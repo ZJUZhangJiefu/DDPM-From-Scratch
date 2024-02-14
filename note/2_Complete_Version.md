@@ -25,10 +25,11 @@ import torch.nn as nn
 ### 2.2 Cosine Schedule  
 This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Probabilistic Models](https://openreview.net/pdf?id=-NEXDKk8gZ), and it behaves better than linear schedule.  
 - Formulae  
-    $\bar{\alpha}_{t} = \frac{f(t)}{f(0)}, f(t) = cos^2(\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$  
-    $\beta_{t} = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha}_{t - 1}}$  
+    $\bar{\alpha} _{t} = \frac{f(t)}{f(0)} , f(t) = cos^{2} (\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$
+
+    $\beta_{t} = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha} _{t - 1}}$  
     - Note  
-    The format of the square($^2$) character applies on the whole cosine function to guarantee that $\beta_t$ is always positive, and its style of writing in the above paper should be corrected as $f(t) = cos^2(\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$.  
+    The square($^2$) operator applies on the whole cosine function to guarantee that $\beta_t$ is always positive, and its style of writing in the above paper should be corrected as $f(t) = cos^2(\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$.  
 - Hyperparameter Settings  
     - Clip $\beta_{t}$ to be no larger than $0.999$, to prevent singularities at the end of the diffusion process near $t = T$.  
     - Use a small offset $s = 0.008$, to prevent $\beta_t$ from being too small near $t = 0$.  
