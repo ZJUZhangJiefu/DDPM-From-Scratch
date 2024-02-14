@@ -53,11 +53,11 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         ``` python
         f_of_ts = torch.cos((ts / timesteps + s) / (1 + s) * math.pi * 0.5) ** 2
         ```
-    - $\bar{\alpha}_{t} = \frac{f(t)}{f(0)}$
+    - $\bar{\alpha}_{t} = \frac{f(t)}{f(0)}$  
         ``` python
         alphas_bar = f_of_ts / f_of_ts[0]
         ```
-    - $\beta_{t} = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha}_{t - 1}}$
+    - $\beta_{t} = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha} _{t - 1}}$
         ``` python
         betas = 1 - (alphas_bar[1:] / alphas_bar[:-1])
         ```
