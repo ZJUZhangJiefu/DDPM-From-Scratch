@@ -1,6 +1,7 @@
 # DDPM(A Complete Version)  
 ## 1 Libraries
 ``` python 
+import math
 import torch
 import torch.nn as nn
 ```
@@ -22,11 +23,48 @@ import torch.nn as nn
                             steps=timesteps, dtype=torch.float64)
     ```
 ### 2.2 Cosine Schedule  
-This kind of $\beta$ schedule is proposed in , and it behaves better than linear schedule.  
+This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Probabilistic Models](https://openreview.net/pdf?id=-NEXDKk8gZ), and it behaves better than linear schedule.  
+- Formulae  
+    $\bar{\alpha}_{t} = \frac{f(t)}{f(0)}, f(t) = cos^2(\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$  
+    $\beta_{t} = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha}_{t - 1}}$  
+    - Note  
+    The format of the square($^2$) character applies on the whole cosine function to guarantee that $\beta_t$ is always positive, and its style of writing in the above paper should be corrected as $f(t) = cos^2(\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$.  
+- Hyperparameter Settings  
+    - Clip $\beta_{t}$ to be no larger than $0.999$, to prevent singularities at the end of the diffusion process near $t = T$.  
+    - Use a small offset $s = 0.008$, to prevent $\beta_t$ from being too small near $t = 0$.  
 - Implementation  
     ``` python
-    
+    def cosine_beta_schedule(timesteps, s = 0.008):
+        steps = timesteps + 1
+        ts = torch.linspace(start=0, end=timesteps, steps=steps, dtype=torch.float64)
+        f_of_ts = torch.cos((ts / timesteps + s) / (1 + s) * math.pi * 0.5) ** 2
+        alphas_bar = f_of_ts / f_of_ts[0]
+        betas = 1 - (alphas_bar[1:] / alphas_bar[:-1])
+        return torch.clip(input=betas, min=0, max=0.999)
     ```
+- Comprehension  
+    - Variable `timesteps` corresponds to $T$ in the formulae.  
+    - Prepare the $t$($0 \leq t \leq T$) for function $f(t)$.  
+        ``` python
+        steps = timesteps + 1
+        ts = torch.linspace(start=0, end=timesteps, steps=steps, dtype=torch.float64)
+        ```
+    - $f(t) = cos^2(\frac{\frac{t}{T} + s}{1 + s} \cdot \frac{\pi}{2})$
+        ``` python
+        f_of_ts = torch.cos((ts / timesteps + s) / (1 + s) * math.pi * 0.5) ** 2
+        ```
+    - $\bar{\alpha}_{t} = \frac{f(t)}{f(0)}$
+        ``` python
+        alphas_bar = f_of_ts / f_of_ts[0]
+        ```
+    - $\beta_{t} = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha}_{t - 1}}$
+        ``` python
+        betas = 1 - (alphas_bar[1:] / alphas_bar[:-1])
+        ```
+    - Clip $\beta_{t}$ to be no larger than $0.999$
+        ``` python
+        return torch.clip(input=betas, min=0, max=0.999)
+        ```
 ## References  
 [1]https://python.readthedocs.io/en/stable/library/typing.html  
 [2]https://pytorch.org/docs/stable/generated/torch.cumprod.html  
