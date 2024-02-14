@@ -1,4 +1,4 @@
-# DDPM Study Notes 1
+# DDPM(A Simpler Version)
 ## 1 Libraries  
 ### 1.1 PyTorch import
 ``` python
