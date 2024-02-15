@@ -176,9 +176,37 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         ``` python
         register_buffer = lambda name, val: self.register_buffer(name, val.to(torch.float32))
         ```
-    - Register the above parameters  
-        ``` python
+    - Register the parameters involved in  the forward Markov transition kernel $q(x_t | x_{t - 1})$.  
+    Equation (5) in the paper uses KL divergence to directly compare $p_{\theta}(x_{t - 1} | x_{t})$ against forward process posteriors, and the forward posteriors are tractable when conditioned on $x_0$:  
+    $q(x_{t - 1}|x_t, x_0) = \mathscr{N}(x_{t - 1}; \tilde{\mu}_{t}(x_t, x_0), \tilde{\beta}_t\mathbf{I})$.  
+    The mean value: $\tilde{\mu}_{t}(x_t, x_0) = \frac{\sqrt{\bar{\alpha}_{t - 1}}\beta_{t}}{1 - \bar{\alpha}_{t}}x_0 + \frac{\sqrt{\alpha_{t}}(1 - \bar{\alpha}_{t - 1})}{1 - \bar{\alpha}_{t}}x_t$.  
+    The variance: $\tilde{\beta}_{t} = \frac{1 - \bar{\alpha}_{t - 1}}{1 - \bar{\alpha}_{t}}\beta_{t}$.  
+        - `betas`: $\beta_t$
+        - `alphas`: $\alpha_t = 1 - \beta_t$  
+        - `alphas_bar`: $\bar{\alpha}_{t} = \Pi_{s = 1}^t\alpha_{s}$  
+        - `alphas_bar_prev`: $\bar{\alpha}_{t - 1}$  
+        - `sigma_squares`: $\sigma^2 = \beta$
 
+            [Note]  
+            $\sigma$ is the standard deviation of distribution $q$)  
+
+        - `sqrt_alphas_bar`: $\sqrt{\bar{\alpha}_{t}}$  
+        - `sqrt_one_minus_alphas_bar`: $\sqrt{1 - \bar{\alpha}_{t}}$  
+        - `log_one_minus_alphas_bar`: $\log(1 - \bar{\alpha}_{t})$  
+        - `sqrt_reciprocal_alphas_bar`: $\sqrt{\frac{1}{\bar{\alpha}_{t}}}$  
+        - `sqrt_reciprocal_of_alphas_bar_minus_1`: $\sqrt{\frac{1}{\bar{\alpha}_{t}} - 1}$  
+
+        ``` python
+        register_buffer('betas', betas)
+        register_buffer('alphas', alphas)
+        register_buffer('alphas_bar', alphas_bar)
+        register_buffer('alphas_bar_prev', alphas_bar_prev)
+        register_buffer('sigma_squares', sigma_squares)
+        register_buffer('sqrt_alphas_bar', torch.sqrt(alphas_bar))
+        register_buffer('sqrt_one_minus_alphas_bar', torch.sqrt(1. - alphas_bar))
+        register_buffer('log_one_minus_alphas_bar', torch.log(1. - alphas_bar))
+        register_buffer('sqrt_reciprocal_alphas_bar', torch.sqrt(1. / alphas_bar))
+        register_buffer('sqrt_reciprocal_of_alphas_bar_minus_1', torch.sqrt(1. / alphas_bar - 1)) 
         ```
 - Implementation  
     ``` python
@@ -253,7 +281,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         register_buffer('xt_coeff_in_posterior_mean', torch.sqrt(alphas) * (1. - alphas_bar_prev) 
                         / (1. - alphas_bar))
     ```
-### 3.10 `__init__` Function Implementation
+## 4 Sampling from the Priorior and Posterior Distributions  
 ``` python
 
 ```
