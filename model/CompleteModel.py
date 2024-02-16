@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 from tqdm import tqdm
+from functools import partial
+from numpy import identity
 def default(value, default_value):
     if value is None:
         return default_value
@@ -153,21 +155,54 @@ class GaussianDiffusion(nn.Module):
         img = transforms.normalize(img)
         return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
     
+    # predict x0 given the value of xt
+    def predict_x0_from_xt(self, xt: torch.Tensor, t: torch.Tensor, noise=None):
+        noise = default(noise, lambda: torch.randn_like(xt))
+        sqrt_alphas_bar_t = extract(self.sqrt_alphas_bar, t, xt.shape)
+        sqrt_one_minus_alphas_bar_t = extract(self.sqrt_one_minus_alphas_bar, t, xt.shape)
+        x0 = (xt - sqrt_one_minus_alphas_bar_t * noise) / sqrt_alphas_bar_t
+        return x0
+        
     # At timestep t, use the model to predict the noise
     # and obtain the denoised image x_{t - 1}
-    def reverse_model_prediction(self, xt, t,  x_self_conditioned=None, clip_denoised=True):
+    def reverse_model_prediction(self, xt, t,  x_self_conditioned=None, clip_x_tm1=True):
         # xt: xt with more noise at the former step
         # t: the current timestep
         # x_self_conditioned: conditional diffusion input
-        # clip_denoised: whether to clip the range of generated result
-        pass
+        # clip_x_tm1: whether to clip the range of x_{t - 1}
+        
+        # model prediction result
+        model_output = self.model(xt, t, x_self_conditioned)
+        maybe_clip = partial(torch.clamp, min=-1, max=1.) if clip_x_tm1 else identity
+        
+        if self.objective == 'pred_noise':
+            pred_noise = model_output
+        x0 = self.predict_x0_from_xt(xt, t, noise=None)
+        x0 = maybe_clip(x0)
+        return x0
     
+    def q_posterior(self, x0, xt, t):
+        # return the mean and variance of q(x_{t - 1}|xt, x0)
+        # x0: the predicted original image
+        # xt: the current image with noise at timestep t
+        # which comes from the former sampling step
+        
+        # expectation(mean) computation
+        posterior_mean = (
+            extract(self.x0_coeff_in_posterior_mean, t, x0.shape) * x0 + 
+            extract(self.xt_coeff_in_posterior_mean, t, x0.shape)
+        )
+        posterior_variance = extract(self.posterior_variance, t, x0.shape)
+        log_clipped_posterior_variance = extract(self.log_clipped_posterior_variance, t, x0.shape)
+        return posterior_mean, posterior_variance, log_clipped_posterior_variance
+            
     # This function returns the mean and variance of distribution p
     def get_p_distribution(self, xt, t, x_self_conditioned=None, clip_denoised=True):
         # xt: xt with more noise at the former step
         # t: the current timestep
         # x_self_conditioned: conditional diffusion input
         # clip_denoised: whether to clip the range of generated result
+        
         pass
     
     @torch.no_grad()
