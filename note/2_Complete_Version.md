@@ -1,29 +1,34 @@
 # DDPM(A Complete Version)  
 ## 1 Libraries and Basic Functions
-### 1.1 Libraries
-``` python 
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-```
+### 1.1 Libraries  
+- Implementation
+    ``` python 
+    import math
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import transforms
+    ```
 ### 1.2 `default` Function  
 If `value` is `None`, then return the default value; else return `value`.  
-``` python
-def default(value, default_value):
-    if value is None:
-        return default_value
-    else:
-        return value
-```
-### 1.3 `gather` Function  
-Gather the constants at timestep $t$.  
-``` python
-def gather(consts: torch.Tensor, t: torch.Tensor):
-    """Gather consts for $t$ and reshape to feature map shape"""
-    c = consts.gather(-1, t)
-    return c.reshape(-1, 1, 1, 1)
-```
+- Implementation  
+    ``` python
+    def default(value, default_value):
+        if value is None:
+            return default_value
+        else:
+            return value
+    ```
+### 1.3 `extract` Function  
+- `consts`: The constants at all timesteps, such as $\alpha_t$, etc.  
+- This function extracts the constant at timestep $t$.  
+- Implementation  
+    ``` python  
+    def extract(consts: torch.Tensor, t, x_shape):
+        batch_size, *_ = x_shape
+        out = consts.gather(dim=-1, index=t)
+        return out.reshape(batch_size, *((1, ) * len(x_shape) - 1))
+    ```
 ## 2 Two Kinds of Forward Process Variance $\beta_{t}$  
 - $\beta_{t}$ is called "forward process variance" in the paper, and it represents the **intensity of the noise added in the forward steps**.  
 - We use $T$ to denote the **number of timesteps**.   
@@ -89,7 +94,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
 ### 3.1 Input Parameters Specification  
 - Input Parameters  
     ``` python  
-    def __init__(self, model, image_size, timesteps=1000, 
+    def __init__(self, model, image_size, loss_fn, timesteps=1000, 
                  sampling_timesteps=None, loss_type='l1', 
                  objective='pred_noise', beta_schedule='cosine', 
                  p2_loss_weight_gamma=0, p2_loss_weight_k=1, 
@@ -98,6 +103,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
 - Comments  
     - `model`: The deep model to predict the noise $\epsilon$ or velocity $v$ or original image $x_0$, denoted as $\epsilon_{\theta}(x_{t}, t)$ in the DDPM paper.  
     - `image_size`: The size of input images.  
+    - `loss_fn`: The loss function.  
     - `timesteps`: $T$, total number of steps in forward/reverse process.  
     - `sampling_timesteps`:  
     - `loss_type`:  
@@ -121,10 +127,11 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         ``` python
         self.channels = model.channels
         # whether to use conditional diffusion model
-        self.self_confition = model.self_condition
+        self.self_condition = model.self_condition
         self.image_size = image_size
         self.timesteps = timesteps
         self.loss_type = loss_type
+        self.loss_fn = loss_fn
         # prediction object of the model
         self.objective = objective
         # number of timesteps in sampling
@@ -140,7 +147,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         ```
     - Assertion of legal prediction objective; for the `GaussianDiffusion` class, the dimension of input and output should be the same; the number of sampling steps should be no greater than the total number of timesteps.  
         ``` python
-        assert objective in {'pred_noise', 'pred_x0', 'pred_v'}
+        assert objective in {'pred_noise', 'pred_x0'}
         # assert the input and output dimension of the model to be equal
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
         # assert number of sampling timesteps <= training timesteps
@@ -181,20 +188,20 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
     $q(x_{t - 1}|x_t, x_0) = \mathscr{N}(x_{t - 1}; \tilde{\mu}_{t}(x_t, x_0), \tilde{\beta}_t\mathbf{I})$.  
     The mean value: $\tilde{\mu}_{t}(x_t, x_0) = \frac{\sqrt{\bar{\alpha}_{t - 1}}\beta_{t}}{1 - \bar{\alpha}_{t}}x_0 + \frac{\sqrt{\alpha_{t}}(1 - \bar{\alpha}_{t - 1})}{1 - \bar{\alpha}_{t}}x_t$.  
     The variance: $\tilde{\beta}_{t} = \frac{1 - \bar{\alpha}_{t - 1}}{1 - \bar{\alpha}_{t}}\beta_{t}$.  
+    The forward loss:  
+    $L_{t - 1} - C = \mathbf{E}_{\mathbf{x}_0, \epsilon}[\frac{1}{2\sigma_t^2}||\frac{1}{\sqrt{\alpha_t}}(\mathbf{x}_{t}(\mathbf{x}_0, \epsilon) - \frac{\beta_{t}}{\sqrt{1 - \bar{\alpha}_{t}}}\epsilon) - \mu_{\theta}(\mathbf{x}_t(\mathbf{x}_0, \epsilon), t)||^2]$  
+    The loss weights in forward steps: $\frac{1}{2\sigma_{t}^2}$.  
         - `betas`: $\beta_t$
         - `alphas`: $\alpha_t = 1 - \beta_t$  
         - `alphas_bar`: $\bar{\alpha}_{t} = \Pi_{s = 1}^t\alpha_{s}$  
         - `alphas_bar_prev`: $\bar{\alpha}_{t - 1}$  
-        - `sigma_squares`: $\sigma^2 = \beta$
-
-            [Note]  
-            $\sigma$ is the standard deviation of distribution $q$)  
-
+        - `sigma_squares`: $\sigma^2 = \beta$ 
         - `sqrt_alphas_bar`: $\sqrt{\bar{\alpha}_{t}}$  
         - `sqrt_one_minus_alphas_bar`: $\sqrt{1 - \bar{\alpha}_{t}}$  
         - `log_one_minus_alphas_bar`: $\log(1 - \bar{\alpha}_{t})$  
         - `sqrt_reciprocal_alphas_bar`: $\sqrt{\frac{1}{\bar{\alpha}_{t}}}$  
         - `sqrt_reciprocal_of_alphas_bar_minus_1`: $\sqrt{\frac{1}{\bar{\alpha}_{t}} - 1}$  
+        - `forward_loss_weights`: $\frac{1}{2\sigma_{t}^2}$
 
         ``` python
         register_buffer('betas', betas)
@@ -207,6 +214,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         register_buffer('log_one_minus_alphas_bar', torch.log(1. - alphas_bar))
         register_buffer('sqrt_reciprocal_alphas_bar', torch.sqrt(1. / alphas_bar))
         register_buffer('sqrt_reciprocal_of_alphas_bar_minus_1', torch.sqrt(1. / alphas_bar - 1)) 
+        register_buffer('forward_loss_weights', 0.5 / sigma_squares)
         ```
 - Implementation  
     ``` python
@@ -221,10 +229,11 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         self.model = model
         self.channels = model.channels
         # whether to use conditional diffusion model
-        self.self_confition = model.self_condition
+        self.self_condition = model.self_condition
         self.image_size = image_size
         self.timesteps = timesteps
         self.loss_type = loss_type
+        self.loss_fn = loss_fn
         # prediction object of the model
         self.objective = objective
         # number of timesteps in sampling
@@ -233,7 +242,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         self.is_ddim_sampling = (self.sampling_timesteps < self.timesteps)
         # the eta parameter used in ddim_sampling
         self.ddim_sampling_eta = ddim_sampling_eta
-        assert objective in {'pred_noise', 'pred_x0', 'pred_v'}
+        assert objective in {'pred_noise', 'pred_x0'}
         # assert the input and output dimension of the model to be equal
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
         # assert number of sampling timesteps <= training timesteps
@@ -280,11 +289,114 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         register_buffer('x0_coeff_in_posterior_mean', torch.sqrt(alphas_bar_prev) / (1. - alphas_bar))
         register_buffer('xt_coeff_in_posterior_mean', torch.sqrt(alphas) * (1. - alphas_bar_prev) 
                         / (1. - alphas_bar))
+        register_buffer('forward_loss_weights', 0.5 / sigma_squares)
     ```
-## 4 Sampling from the Priorior and Posterior Distributions  
-``` python
+## 4 Sampling from the Priorior and Posterior Distributions, Loss Calculation and the Forward Function  
+### 4.1 Sampling from $q(\mathbf{x}_t|\mathbf{x}_{0})$
+Sampling from the distribution $q(\mathbf{x}_t|\mathbf{x}_{0})$, to get the image with noise added.   
+- This function `q_sample` gets a sample from the distribution $q(\mathbf{x}_{t}|x_{0}) = \mathscr{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_{t}}\mathbf{x}_{0}, (1 - \bar{\alpha}_{t})I)$.  
+    - Get the noise from standard Gaussian distribution.  
+        ``` python
+        noise = default(value=noise, default_value=lambda: torch.randn_like(x0))
+        ```
+    - Coefficients needed in obtaining the distribution at the timestep $t$.  
+        - `alphas_bar`: $\bar{\alpha}_{t}$  
+        - `standard_deviations`: $\sigma_{t}$  
+        ``` python
+        alphas_bar = self.sqrt_alphas_bar
+        standard_deviations = self.sqrt_one_minus_alphas_bar
+        ```  
+    - The mean value and standard deviation of distribution $q(\mathbf{x}_{t}|\mathbf{x}_{0})$.  
+        - Mean value: $\sqrt{\bar{\alpha}_{t}}\mathbf{x}_0$.  
+        - Standard deviation: $(1 - \bar{\alpha}_{t})$.  
+        ``` python
+        mean_t = extract(consts=alphas_bar, t=t, x_shape=x0.shape) * x0
+        standard_deviation_t = extract(consts=standard_deviations, t=t, x_shape=x0.shape)  
+        ```
+    - Obtain the sample:  
+        ``` python
+        return mean_t + standard_deviation_t * noise
+        ```
+- Implementation  
+    ``` python
+    def q_sample(self, x0, t, noise=None):
+        # sampling from distribution q, adding noise to the original images, to obtain images at timestep t
+        # input: the original images x_{0}
+        # noise: standard Gaussian noise which has the same dimension as the input images x0
+        noise = default(value=noise, default_value=lambda: torch.randn_like(x0))
+        # to sample from the distribution
+        # we get its mean value and variance
+        # then apply the noise
+        
+        # the alphas_bar and standard deviation at all the timesteps
+        alphas_bar = self.sqrt_alphas_bar
+        standard_deviations = self.sqrt_one_minus_alphas_bar
+        # the mean value and standard deviaion at timestep t
+        mean_t = extract(consts=alphas_bar, t=t, x_shape=x0.shape) * x0
+        standard_deviation_t = extract(consts=standard_deviations, t=t, x_shape=x0.shape)  
+        return mean_t + standard_deviation_t * noise
+    ```
+### 4.2 Loss Calculation in Forward Steps  
+- Notes  
 
+- Implementation  
+``` python
+def forward_p_loss(self, x0: torch.Tensor, t, noise=None):
+    # x0: the original image
+    # noise: standard Gaussian noise, which has the same shape as x0
+    batch_size, channels, height, width = x0.shape
+    noise = default(noise, lambda: torch.randn_like(x0))
+    # sample from q distribution, to get image with noise
+    xt = self.q_sample(x0, t, noise)
+    # the prediction of model at timestep t
+    out = self.model(x0, t, self.self_condition)
+    # calculate the real value  
+    if self.objective == 'pred_noise':
+        target = noise 
+    elif self.objective == 'pred_x0':
+        target = x0
+    else:
+        raise ValueError("Unknown prediction objective " + self.objective)
+    # calculate the loss
+    loss = self.loss_fn(out, target, reduction='None')
+    # calculate the weighted mean loss
+    loss = loss * extract(self.forward_loss_weights, t, loss.shape)
+    return loss.mean()
 ```
+### 4.4 The `forward` Function  
+- This function implements the forward process, i.e. adding noise to the original image.  
+    - Obtain the shape, device and image size
+        ``` python
+        batch_size, channels, height, width = img.shape  
+        device = img.device
+        img_size = self.image_size
+        ```
+    - Obtain a sequence of random integers in range $[0, T]$, as timesteps for each image in the batch.  
+        ``` python
+        t = torch.randint(low=0, high=self.timesteps, size=(batch_size, ), device=device).long()
+        ```
+    - Normalize the image, then call `forward_p_loss` to calculate $\mathbf{x}_t$, do prediction and calculate the forward loss.  
+        ``` python
+        # normalize the original image to [-1, 1]
+        normalize = transforms.Normalize(mean=(0.5, 0.5, 0.5), 
+                                                    std=(0.5, 0.5, 0.5))
+        img = transforms.normalize(img)
+        return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
+        ```
+- Implementation  
+    ``` python
+    def forward(self, img: torch.Tensor, *args, **kwargs):
+        # shape of the training image: (N, C, H, W)
+        batch_size, channels, height, width = *img.shape,  
+        device = img.device
+        img_size = self.image_size
+        # obtain a sequence of random integers in range [0, T] as timesteps for each image in the batch
+        t = torch.randint(low=0, high=self.timesteps, size=(batch_size, ), device=device).long()
+        # normalize the original image to [-1, 1]
+        normalize = transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+        img = transforms.normalize(img)
+        return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
+    ```
 ## References  
 [1]https://python.readthedocs.io/en/stable/library/typing.html  
 [2]https://pytorch.org/docs/stable/generated/torch.cumprod.html  

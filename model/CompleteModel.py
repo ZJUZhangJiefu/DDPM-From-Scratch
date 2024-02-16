@@ -2,15 +2,16 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import transforms
 def default(value, default_value):
     if value is None:
         return default_value
     else:
         return value
-def gather(consts: torch.Tensor, t: torch.Tensor):
-    """Gather consts for $t$ and reshape to feature map shape"""
-    c = consts.gather(-1, t)
-    return c.reshape(-1, 1, 1, 1)
+def extract(consts: torch.Tensor, t, x_shape):
+    batch_size, *_ = x_shape
+    out = consts.gather(dim=-1, index=t)
+    return out.reshape(batch_size, *((1, ) * len(x_shape) - 1))
 def linear_beta_schedule(timesteps) -> torch.Tensor:
     beta_start = 0.0001 # the lower bound of beta, when timesteps == 1000
     beta_end = 0.02 # the upper bound of beta, when timesteps == 1000
@@ -26,7 +27,7 @@ def cosine_beta_schedule(timesteps, s=0.008) -> torch.Tensor:
     betas = 1 - (alphas_bar[1:] / alphas_bar[:-1])
     return torch.clip(input=betas, min=0, max=0.999)
 class GaussianDiffusion(nn.Module):
-    def __init__(self, model: nn.Module, image_size, timesteps=1000, 
+    def __init__(self, model: nn.Module, image_size, loss_fn, timesteps=1000, 
                  sampling_timesteps=None, loss_type='l1', 
                  objective='pred_noise', beta_schedule: str='cosine', 
                  p2_loss_weight_gamma=0, p2_loss_weight_k=1, 
@@ -37,10 +38,11 @@ class GaussianDiffusion(nn.Module):
         self.model = model
         self.channels = model.channels
         # whether to use conditional diffusion model
-        self.self_confition = model.self_condition
+        self.self_condition = model.self_condition
         self.image_size = image_size
         self.timesteps = timesteps
         self.loss_type = loss_type
+        self.loss_fn = loss_fn
         # prediction object of the model
         self.objective = objective
         # number of timesteps in sampling
@@ -49,7 +51,9 @@ class GaussianDiffusion(nn.Module):
         self.is_ddim_sampling = (self.sampling_timesteps < self.timesteps)
         # the eta parameter used in ddim_sampling
         self.ddim_sampling_eta = ddim_sampling_eta
-        assert objective in {'pred_noise', 'pred_x0', 'pred_v'}
+        # the loss weight when using L2 norm and formula (10) in DDPM paper
+        
+        assert objective in {'pred_noise', 'pred_x0'}
         # assert the input and output dimension of the model to be equal
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
         # assert number of sampling timesteps <= training timesteps
@@ -96,14 +100,54 @@ class GaussianDiffusion(nn.Module):
         register_buffer('x0_coeff_in_posterior_mean', torch.sqrt(alphas_bar_prev) / (1. - alphas_bar))
         register_buffer('xt_coeff_in_posterior_mean', torch.sqrt(alphas) * (1. - alphas_bar_prev) 
                         / (1. - alphas_bar))
+        register_buffer('forward_loss_weights', 0.5 / sigma_squares)
+    def q_sample(self, x0, t, noise=None):
+        # sampling from distribution q, adding noise to the original images, to obtain images at timestep t
+        # input: the original images x_{0}
+        # noise: standard Gaussian noise which has the same dimension as the input images x0
+        noise = default(value=noise, default_value=lambda: torch.randn_like(x0))
+        # to sample from the distribution
+        # we get its mean value and variance
+        # then apply the noise
         
-    # sampling from distribution q
-    def q_sample(self, x, t, noise=None):
-        pass
+        # the alphas_bar and standard deviation at all the timesteps
+        alphas_bar = self.sqrt_alphas_bar
+        standard_deviations = self.sqrt_one_minus_alphas_bar
+        # the mean value and standard deviaion at timestep t
+        mean_t = extract(consts=alphas_bar, t=t, x_shape=x0.shape) * x0
+        standard_deviation_t = extract(consts=standard_deviations, t=t, x_shape=x0.shape)  
+        return mean_t + standard_deviation_t * noise
+    def forward_p_loss(self, x0: torch.Tensor, t, noise=None):
+        # x0: the original image
+        # noise: standard Gaussian noise, which has the same shape as x0
+        batch_size, channels, height, width = x0.shape
+        noise = default(noise, lambda: torch.randn_like(x0))
+        # sample from q distribution, to get image with noise
+        xt = self.q_sample(x0, t, noise)
+        # the prediction of model at timestep t
+        out = self.model(x0, t, self.self_condition)
+        # calculate the real value  
+        if self.objective == 'pred_noise':
+            target = noise 
+        elif self.objective == 'pred_x0':
+            target = x0
+        else:
+            raise ValueError("Unknown prediction objective " + self.objective)
+        # calculate the loss
+        loss = self.loss_fn(out, target, reduction='None')
+        # calculate the weighted mean loss
+        loss = loss * extract(self.forward_loss_weights, t, loss.shape)
+        return loss.mean()
         
-        
-    def forward(self, img, *args, **kwargs):
+    def forward(self, img: torch.Tensor, *args, **kwargs):
         # shape of the training image: (N, C, H, W)
-        batch_size, channels, height, width = *img.shape, 
+        batch_size, channels, height, width = img.shape
         device = img.device
         img_size = self.image_size
+        # obtain a sequence of random integers in range [0, T]
+        t = torch.randint(low=0, high=self.timesteps, size=(batch_size, ), device=device).long()
+        # normalize the original image to [-1, 1]
+        normalize = transforms.Normalize(mean=(0.5, 0.5, 0.5), 
+                                         std=(0.5, 0.5, 0.5))
+        img = transforms.normalize(img)
+        return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
