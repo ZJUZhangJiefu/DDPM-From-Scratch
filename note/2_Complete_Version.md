@@ -338,7 +338,29 @@ Sampling from the distribution $q(\mathbf{x}_t|\mathbf{x}_{0})$, to get the imag
     ```
 ### 4.2 Loss Calculation in Forward Steps  
 - Notes  
-
+    - Obtain the image shape, as well as the standard Gaussian noise $\epsilon$.  
+        ``` python
+        batch_size, channels, height, width = x0.shape
+        noise = default(noise, lambda: torch.randn_like(x0))
+        ```
+    - Sample from distribution $q(x _ {t} | x _ {0})$, to get images with noise $x _ {t}$.  
+        ``` python
+        xt = self.q_sample(x0, t, noise)
+        ```
+    - Obtain the prediction result of the deep model, the real value, and calculate weighted mean loss.  
+        ``` python
+        if self.objective == 'pred_noise':
+        target = noise 
+        elif self.objective == 'pred_x0':
+            target = x0
+        else:
+            raise ValueError("Unknown prediction objective " + self.objective)
+        # calculate the loss
+        loss = self.loss_fn(out, target, reduction='None')
+        # calculate the weighted mean loss
+        loss = loss * extract(self.forward_loss_weights, t, loss.shape)
+        return loss.mean()
+        ```
 - Implementation  
 ``` python
 def forward_p_loss(self, x0: torch.Tensor, t, noise=None):
