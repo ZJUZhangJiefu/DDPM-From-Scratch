@@ -119,7 +119,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
     - `ddim_sampling_eta`:  
 ### 3.2 Class Parameters Configuration  
 - Class Parameters(Not directly contained in the computation graph)  
-    - The deep neural model to predict noise $\epsilon$, original image $\mathbf{x}_0$, or the velocity $v$. (The model to predict $\epsilon$ is designated as $\epsilon_{\theta}(\mathbf{x}_t, t)$) in the DDPM paper.  
+    - The deep neural model to predict noise $\epsilon$, original image $x_{0}$, or the velocity $v$. (The model to predict $\epsilon$ is designated as ${\epsilon}_{\theta}(x_t, t)$ in the DDPM paper.)  
         ``` python
         self.model = model
         ```
@@ -165,7 +165,7 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         else:
             raise ValueError('Unknown beta schedule method: ' + beta_schedule)
         ```
-    - Compute $\alpha = 1 - \beta$, $\bar{\alpha}_{t} = \Pi_{s=1}^{t}\alpha_{s}$ and $\sigma_t^2 = \beta_t$ in the DDPM paper. 
+    - Compute $\alpha = 1 - \beta,\bar{\alpha}_t = \Pi _{s=1}^t{\alpha}_s$ and $\sigma_t^2 = \beta_t$ in the DDPM paper. 
         - `alphas`: $\alpha_t$  
         - `alphas_bar`: $\bar{\alpha}_{t}$  
         - `alphas_bar_prev`: $\bar{\alpha}_{t - 1}$  
@@ -185,15 +185,15 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         ```
     - Register the parameters involved in  the forward Markov transition kernel $q(x_t | x_{t - 1})$.  
     Equation (5) in the paper uses KL divergence to directly compare $p_{\theta}(x_{t - 1} | x_{t})$ against forward process posteriors, and the forward posteriors are tractable when conditioned on $x_0$:  
-    $q(x_{t - 1}|x_t, x_0) = \mathscr{N}(x_{t - 1}; \tilde{\mu}_{t}(x_t, x_0), \tilde{\beta}_t\mathbf{I})$.  
-    The mean value: $\tilde{\mu}_{t}(x_t, x_0) = \frac{\sqrt{\bar{\alpha}_{t - 1}}\beta_{t}}{1 - \bar{\alpha}_{t}}x_0 + \frac{\sqrt{\alpha_{t}}(1 - \bar{\alpha}_{t - 1})}{1 - \bar{\alpha}_{t}}x_t$.  
-    The variance: $\tilde{\beta}_{t} = \frac{1 - \bar{\alpha}_{t - 1}}{1 - \bar{\alpha}_{t}}\beta_{t}$.  
+    $q(x_{t - 1}|x_t, x_0) = \mathscr{N} (x_{t - 1}; \tilde {\mu} _ {t} (x_t, x_0), \tilde{\beta} _ t \mathbf{I})$.  
+    The mean value: $\tilde{\mu} _ {t} (x_t, x_0) = \frac{\sqrt{\bar{\alpha} _ {t - 1}}\beta_{t}}{1 - \bar{\alpha} _ {t}}x_0 + \frac{\sqrt{\alpha_{t}}(1 - \bar{\alpha} _ {t - 1})}{1 - \bar{\alpha} _ {t}}x_t$.  
+    The variance: $\tilde{\beta} _ {t} = \frac{1 - \bar{\alpha} _ {t - 1}}{1 - \bar{\alpha} _ {t}}\beta_{t}$.  
     The forward loss:  
-    $L_{t - 1} - C = \mathbf{E}_{\mathbf{x}_0, \epsilon}[\frac{1}{2\sigma_t^2}||\frac{1}{\sqrt{\alpha_t}}(\mathbf{x}_{t}(\mathbf{x}_0, \epsilon) - \frac{\beta_{t}}{\sqrt{1 - \bar{\alpha}_{t}}}\epsilon) - \mu_{\theta}(\mathbf{x}_t(\mathbf{x}_0, \epsilon), t)||^2]$  
+    $L_{t - 1} - C = \mathbf{E} _ {\mathbf{x} _ 0, \epsilon}[\frac{1}{2\sigma _ t ^ 2}||\frac{1}{\sqrt{\alpha _ t}}(\mathbf{x} _ {t} (\mathbf{x} _ 0, \epsilon) - \frac{\beta _ {t}}{\sqrt{1 - \bar{\alpha} _ {t}}}\epsilon) - \mu _ {\theta}(\mathbf{x} _ t(\mathbf{x} _ 0, \epsilon), t)||^2]$  
     The loss weights in forward steps: $\frac{1}{2\sigma_{t}^2}$.  
         - `betas`: $\beta_t$
         - `alphas`: $\alpha_t = 1 - \beta_t$  
-        - `alphas_bar`: $\bar{\alpha}_{t} = \Pi_{s = 1}^t\alpha_{s}$  
+        - `alphas_bar`: $\bar{\alpha} _ {t} = \Pi_{s = 1}^t\alpha_{s}$  
         - `alphas_bar_prev`: $\bar{\alpha}_{t - 1}$  
         - `sigma_squares`: $\sigma^2 = \beta$ 
         - `sqrt_alphas_bar`: $\sqrt{\bar{\alpha}_{t}}$  
@@ -292,9 +292,9 @@ This kind of $\beta$ schedule is proposed in [Improved Denoising Diffusion Proba
         register_buffer('forward_loss_weights', 0.5 / sigma_squares)
     ```
 ## 4 Sampling from the Priorior and Posterior Distributions, Loss Calculation and the Forward Function  
-### 4.1 Sampling from $q(\mathbf{x}_t|\mathbf{x}_{0})$
-Sampling from the distribution $q(\mathbf{x}_t|\mathbf{x}_{0})$, to get the image with noise added.   
-- This function `q_sample` gets a sample from the distribution $q(\mathbf{x}_{t}|x_{0}) = \mathscr{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_{t}}\mathbf{x}_{0}, (1 - \bar{\alpha}_{t})I)$.  
+### 4.1 Sampling from $q(x_t|x_{0})$
+Sampling from the distribution $q(x_t|x_{0})$, to get the image with noise added.   
+- This function `q_sample` gets a sample from the distribution $q(x_t|x_{0}) = N(x_t; \sqrt{\bar{\alpha} _ {t}}x_{0}, (1 - \bar{\alpha}_{t})I)$.  
     - Get the noise from standard Gaussian distribution.  
         ``` python
         noise = default(value=noise, default_value=lambda: torch.randn_like(x0))
@@ -306,7 +306,7 @@ Sampling from the distribution $q(\mathbf{x}_t|\mathbf{x}_{0})$, to get the imag
         alphas_bar = self.sqrt_alphas_bar
         standard_deviations = self.sqrt_one_minus_alphas_bar
         ```  
-    - The mean value and standard deviation of distribution $q(\mathbf{x}_{t}|\mathbf{x}_{0})$.  
+    - The mean value and standard deviation of distribution $q(\mathbf{x} _ {t}|\mathbf{x}_{0})$.  
         - Mean value: $\sqrt{\bar{\alpha}_{t}}\mathbf{x}_0$.  
         - Standard deviation: $(1 - \bar{\alpha}_{t})$.  
         ``` python
