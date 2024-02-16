@@ -400,8 +400,8 @@ def forward_p_loss(self, x0: torch.Tensor, t, noise=None):
     - Normalize the image, then call `forward_p_loss` to calculate $\mathbf{x}_t$, do prediction and calculate the forward loss.  
         ``` python
         # normalize the original image to [-1, 1]
-        normalize = transforms.Normalize(mean=(0.5, 0.5, 0.5), 
-                                                    std=(0.5, 0.5, 0.5))
+        normalize = transforms.Normalize(mean=(0., 0., 0.), 
+                                         std=(1., 1., 1.))
         img = transforms.normalize(img)
         return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
         ```
@@ -419,6 +419,8 @@ def forward_p_loss(self, x0: torch.Tensor, t, noise=None):
         img = transforms.normalize(img)
         return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
     ```
+## 5 The Reverse Process
+
 ## References  
 [1]https://python.readthedocs.io/en/stable/library/typing.html  
 [2]https://pytorch.org/docs/stable/generated/torch.cumprod.html  

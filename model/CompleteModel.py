@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
+from tqdm import tqdm
 def default(value, default_value):
     if value is None:
         return default_value
@@ -147,7 +148,58 @@ class GaussianDiffusion(nn.Module):
         # obtain a sequence of random integers in range [0, T]
         t = torch.randint(low=0, high=self.timesteps, size=(batch_size, ), device=device).long()
         # normalize the original image to [-1, 1]
+        normalize = transforms.Normalize(mean=(0., 0., 0.), 
+                                         std=(1., 1., 1.))
+        img = transforms.normalize(img)
+        return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
+    
+    # At timestep t, use the model to predict the noise
+    # and obtain the denoised image x_{t - 1}
+    def reverse_model_prediction(self, xt, t,  x_self_conditioned=None, clip_denoised=True):
+        # xt: xt with more noise at the former step
+        # t: the current timestep
+        # x_self_conditioned: conditional diffusion input
+        # clip_denoised: whether to clip the range of generated result
+        pass
+    
+    # This function returns the mean and variance of distribution p
+    def get_p_distribution(self, xt, t, x_self_conditioned=None, clip_denoised=True):
+        # xt: xt with more noise at the former step
+        # t: the current timestep
+        # x_self_conditioned: conditional diffusion input
+        # clip_denoised: whether to clip the range of generated result
+        pass
+    
+    @torch.no_grad()
+    def p_sample(self, xt: torch.Tensor, t: torch.Tensor, x_self_conditioned=None, clip_denoised=True):
+        # xt: xt with more noise at the former step
+        # t: the current timestep
+        # x_self_conditioned: conditional diffusion input
+        # clip_denoised: whether to clip the range of generated result
+        batch_size = xt.shape[0]
+        device = xt.device
+        
+        pass
+    
+    # denoise from a noisy image that obeys Gaussian distribution
+    # to obtain generative result
+    def denoise(self, shape):
+        # shape: the shape of output image 
+        # [batch_size, channels, height, width]
+        batch_size = shape[0]
+        device = self.betas.device
+        # Get a noisy image which obeys the Gaussian distribution
+        noisy_imgs = torch.randn(size=shape, device=device)
+        # The final generated image by denoising
+        x_denoised = None
+        # iteratively denoise from step T to step 0
+        # to generate the denoised image
+        for t in tqdm(iterable=reversed(range(0, self.timesteps)), 
+                      total=self.timesteps):
+            pass
         normalize = transforms.Normalize(mean=(0.5, 0.5, 0.5), 
                                          std=(0.5, 0.5, 0.5))
         img = transforms.normalize(img)
-        return self.forward_p_loss(x0=img, t=t, *args, **kwargs)
+        return img
+    
+    
