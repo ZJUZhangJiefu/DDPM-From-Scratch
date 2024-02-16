@@ -385,7 +385,7 @@ def forward_p_loss(self, x0: torch.Tensor, t, noise=None):
     loss = loss * extract(self.forward_loss_weights, t, loss.shape)
     return loss.mean()
 ```
-### 4.4 The `forward` Function  
+### 4.3 The `forward` Function  
 - This function implements the forward process, i.e. adding noise to the original image.  
     - Obtain the shape, device and image size
         ``` python
